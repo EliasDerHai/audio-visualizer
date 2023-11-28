@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 iced = "0.5.2"
 native-dialog = "0.7.0"
+rodio = "0.17.3"
+cpal = "0.13"
