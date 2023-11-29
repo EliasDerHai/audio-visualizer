@@ -1,8 +1,10 @@
+use core::time::Duration;
 use iced::{
     widget::{Button, Column, Text},
     Application, Command,
 };
 use native_dialog::FileDialog;
+use rodio::source::SineWave;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::fs::File;
 use std::path::PathBuf;
@@ -10,7 +12,6 @@ use std::path::PathBuf;
 pub struct AudioVisualizer {
     file_path: Option<PathBuf>,
     audio_output: Option<OutputStreamHandle>,
-    audio_sink: Option<Sink>,
 }
 
 #[derive(Debug, Clone)]
@@ -27,11 +28,23 @@ impl Application for AudioVisualizer {
 
     fn new(_flags: Self::Flags) -> (AudioVisualizer, Command<Self::Message>) {
         let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+
+        let sink = Sink::try_new(&stream_handle).unwrap();
+
+        // Add a dummy source of the sake of the example.
+        let source = SineWave::new(440.0)
+            .take_duration(Duration::from_secs_f32(3.0))
+            .amplify(0.20);
+        sink.append(source);
+
+        // The sound plays in a separate thread. This call will block the current thread until the sink
+        // has finished playing all its queued sounds.
+        sink.sleep_until_end();
+
         (
             AudioVisualizer {
                 file_path: None,
                 audio_output: Some(stream_handle),
-                audio_sink: None,
             },
             Command::none(),
         )
@@ -63,21 +76,28 @@ impl Application for AudioVisualizer {
             }
             Message::PlayPressed => {
                 println!("Start pressed");
-                self.file_path.as_ref().and_then(|path| {
-                    self.audio_output.as_ref().and_then(|audio_output| {
-                        File::open(path).ok().and_then(|file| {
-                            Decoder::new(std::io::BufReader::new(file))
-                                .ok()
-                                .map(|source| {
-                                    audio_output
-                                    .play_raw(source.convert_samples())
-                                    .map_err(|e| {
-                                        println!("Error playing audio: {:?}", e);
-                                    })
-                                })
-                        })
-                    })
-                });
+                if let Some(path) = &self.file_path {
+                    match File::open(path) {
+                        Ok(file) => {
+                            match Decoder::new(std::io::BufReader::new(file)) {
+                                Ok(source) => {
+                                    // Create an OutputStreamHandle inline
+                                    let (_stream, stream_handle) =
+                                        OutputStream::try_default().unwrap();
+
+                                    // Create a Sink and play the audio
+                                    let sink = Sink::try_new(&stream_handle).unwrap();
+                                    sink.append(source);
+
+                                    // Block the current thread until all queued sounds have finished playing
+                                    sink.sleep_until_end();
+                                }
+                                Err(e) => println!("Error decoding audio: {:?}", e),
+                            }
+                        }
+                        Err(e) => println!("Error opening file: {:?}", e),
+                    }
+                }
             }
         }
 
