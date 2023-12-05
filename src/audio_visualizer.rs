@@ -5,28 +5,54 @@ use iced::{
 use native_dialog::FileDialog;
 use rodio::{Decoder, OutputStream, Sink};
 use std::fs::File;
+use std::io::BufReader;
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
 
 pub struct AudioVisualizer {
-    file_path: Option<PathBuf>
+    file_path: Option<PathBuf>,
+    audio_command_sender: mpsc::Sender<AudioCommand>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Message {
+pub enum UiMessage {
     OpenPressed,
     PlayPressed,
+    StopPressed,
+}
+
+#[derive(Debug, Clone)]
+enum AudioCommand {
+    Play(PathBuf),
+    Stop,
 }
 
 impl Application for AudioVisualizer {
     type Executor = iced::executor::Default;
-    type Message = Message;
+    type Message = UiMessage;
     type Flags = ();
     type Theme = iced::Theme;
 
     fn new(_flags: Self::Flags) -> (AudioVisualizer, Command<Self::Message>) {
+        let (sender, receiver) = mpsc::channel();
+
+        thread::spawn(move || {
+            let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+            let sink = Sink::try_new(&stream_handle).unwrap();
+
+            loop {
+                if let Ok(command) = receiver.try_recv() {
+                    process_audio_command(command, &sink);
+                }
+                thread::sleep(std::time::Duration::from_millis(100));
+            }
+        });
+
         (
             AudioVisualizer {
-                file_path: None
+                file_path: None,
+                audio_command_sender: sender,
             },
             Command::none(),
         )
@@ -38,7 +64,7 @@ impl Application for AudioVisualizer {
 
     fn update(&mut self, _message: Self::Message) -> Command<Self::Message> {
         match _message {
-            Message::OpenPressed => {
+            UiMessage::OpenPressed => {
                 match FileDialog::new()
                     .add_filter("Audio Files", &["mp3"])
                     .show_open_single_file()
@@ -56,26 +82,17 @@ impl Application for AudioVisualizer {
                     }
                 }
             }
-            Message::PlayPressed => {
+            UiMessage::PlayPressed => {
                 println!("Start pressed");
-                if let Some(path) = &self.file_path {
-                    match File::open(path) {
-                        Ok(file) => match Decoder::new(std::io::BufReader::new(file)) {
-                            Ok(source) => {
-                                let (_stream, stream_handle) = OutputStream::try_default().unwrap();
-                                match Sink::try_new(&stream_handle) {
-                                    Ok(sink) => {
-                                        sink.append(source);
-                                        sink.sleep_until_end();
-                                    }
-                                    Err(e) => println!("Error creating sink: {:?}", e),
-                                }
-                            }
-                            Err(e) => println!("Error decoding audio: {:?}", e),
-                        },
-                        Err(e) => println!("Error opening file: {:?}", e),
-                    }
-                } 
+                if let Some(path) = self.file_path.clone() {
+                    self.audio_command_sender
+                        .send(AudioCommand::Play(path))
+                        .unwrap();
+                }
+            }
+            UiMessage::StopPressed => {
+                println!("Stop pressed");
+                self.audio_command_sender.send(AudioCommand::Stop).unwrap();
             }
         }
 
@@ -91,18 +108,35 @@ impl Application for AudioVisualizer {
             .map(|s| s.to_string())
             .unwrap_or("-".to_string());
 
-        let open_button = Button::new(Text::new("Open")).on_press(Message::OpenPressed);
+        let open_button = Button::new(Text::new("Open")).on_press(UiMessage::OpenPressed);
         let file_text = Text::new(file_name);
-        let play_button = Button::new(Text::new("Play")).on_press(Message::PlayPressed);
+        let play_button = Button::new(Text::new("Play")).on_press(UiMessage::PlayPressed);
+        let stop_button = Button::new(Text::new("Stop")).on_press(UiMessage::StopPressed);
 
         Column::new()
             .push(open_button)
             .push(file_text)
             .push(play_button)
+            .push(stop_button)
             .into()
     }
 
     fn theme(&self) -> Self::Theme {
         Self::Theme::Dark
+    }
+}
+
+fn process_audio_command(command: AudioCommand, sink: &Sink) {
+    match command {
+        AudioCommand::Play(path) => {
+            if let Ok(file) = File::open(path) {
+                if let Ok(source) = Decoder::new(BufReader::new(file)) {
+                    sink.append(source);
+                }
+            }
+        }
+        AudioCommand::Stop => {
+            sink.stop();
+        }
     }
 }
