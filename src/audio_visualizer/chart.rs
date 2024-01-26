@@ -1,78 +1,26 @@
-use iced::widget::canvas::{self, Cursor, Frame, Geometry, Path, Stroke};
-use iced::{Color, Point, Rectangle, Theme};
-use std::time::{Duration, Instant};
+use iced::{Color, mouse, Rectangle, Renderer, Theme};
+use iced::widget::canvas::{Frame, Geometry, Path, Program};
+use crate::audio_visualizer::UiMessage;
 
-use super::UiMessage;
-
-pub struct State {
-    phase_shift: f32,
-    last_update: Instant,
+#[derive(Debug)]
+pub struct Circle {
+    pub radius: f32,
 }
 
-impl Default for State {
-    fn default() -> Self {
-        State {
-            phase_shift: 0.0,
-            last_update: Instant::now(),
-        }
-    }
-}
+impl Program<UiMessage> for Circle {
+    type State = ();
 
-pub struct ChartCanvas;
+    fn draw(&self, _state: &(), renderer: &Renderer, _theme: &Theme, bounds: Rectangle, _cursor: mouse::Cursor) -> Vec<Geometry>{
+        // We prepare a new `Frame`
+        let mut frame = Frame::new(renderer, bounds.size());
 
-impl canvas::Program<UiMessage> for ChartCanvas {
-    type State = State;
+        // We create a `Path` representing a simple circle
+        let circle = Path::circle(frame.center(), self.radius);
 
-    fn update(
-        &self,
-        _state: &mut Self::State,
-        _event: canvas::Event,
-        _bounds: Rectangle,
-        _cursor: Cursor,
-    ) -> (canvas::event::Status, Option<UiMessage>) {
-        let now = Instant::now();
-        if now.duration_since(_state.last_update) >= Duration::from_millis(16) {
-            _state.phase_shift += 0.5;
-            _state.last_update = now;
-            (canvas::event::Status::Captured, None)
-        } else {
-            (canvas::event::Status::Ignored, None)
-        }
-    }
+        // And fill it with some color
+        frame.fill(&circle, Color::BLACK);
 
-    fn draw(
-        &self,
-        _state: &Self::State,
-        _theme: &Theme,
-        bounds: Rectangle,
-        _cursor: Cursor,
-    ) -> Vec<Geometry> {
-        let mut frame = Frame::new(bounds.size());
-
-        let stroke = Stroke::default().with_color(Color::WHITE);
-
-        let path = Path::new(|path| {
-            for x in 0..bounds.width as i32 {
-                let y: f32 = (bounds.height / 2.0)
-                    + 20.0 * f32::sin(((x as f32) + _state.phase_shift) * 0.1);
-                if x == 0 {
-                    path.move_to(Point::new(x as f32, y));
-                } else {
-                    path.line_to(Point::new(x as f32, y));
-                }
-            }
-        });
-        frame.stroke(&path, stroke);
-
+        // Finally, we produce the geometry
         vec![frame.into_geometry()]
-    }
-
-    fn mouse_interaction(
-        &self,
-        _state: &Self::State,
-        _bounds: Rectangle,
-        _cursor: Cursor,
-    ) -> iced::mouse::Interaction {
-        iced::mouse::Interaction::default()
     }
 }

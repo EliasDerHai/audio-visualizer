@@ -1,5 +1,4 @@
 mod chart;
-use chart::ChartCanvas;
 
 use iced::{
     widget::{Button, Column, Text, Canvas},
@@ -12,6 +11,7 @@ use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
+use crate::audio_visualizer::chart::Circle;
 
 
 pub struct AudioVisualizer {
@@ -35,8 +35,8 @@ enum AudioCommand {
 impl Application for AudioVisualizer {
     type Executor = iced::executor::Default;
     type Message = UiMessage;
-    type Flags = ();
     type Theme = iced::Theme;
+    type Flags = ();
 
     fn new(_flags: Self::Flags) -> (AudioVisualizer, Command<Self::Message>) {
         let (sender, receiver) = mpsc::channel();
@@ -117,9 +117,8 @@ impl Application for AudioVisualizer {
         let play_button = Button::new(Text::new("Play")).on_press(UiMessage::PlayPressed);
         let stop_button = Button::new(Text::new("Stop")).on_press(UiMessage::StopPressed);
 
-        let canvas = Canvas::new(ChartCanvas)
-            .width(iced::Length::Fill)
-            .height(iced::Length::Units(300));
+        let canvas = Canvas::new(Circle { radius: 50.0 })
+            .width(iced::Length::Fill);
 
         Column::new()
             .push(open_button)
