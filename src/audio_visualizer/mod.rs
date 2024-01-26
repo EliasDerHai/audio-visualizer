@@ -11,7 +11,7 @@ use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
-use crate::audio_visualizer::chart::Circle;
+use crate::audio_visualizer::chart::SineWave;
 
 
 pub struct AudioVisualizer {
@@ -91,12 +91,14 @@ impl Application for AudioVisualizer {
                 if let Some(path) = self.file_path.clone() {
                     self.audio_command_sender
                         .send(AudioCommand::Play(path))
-                        .unwrap();
+                        .expect("Could not send audio command");
                 }
             }
             UiMessage::StopPressed => {
                 println!("Stop pressed");
-                self.audio_command_sender.send(AudioCommand::Stop).unwrap();
+                self.audio_command_sender
+                    .send(AudioCommand::Stop)
+                    .expect("Could not send audio command");
             }
         }
 
@@ -117,7 +119,7 @@ impl Application for AudioVisualizer {
         let play_button = Button::new(Text::new("Play")).on_press(UiMessage::PlayPressed);
         let stop_button = Button::new(Text::new("Stop")).on_press(UiMessage::StopPressed);
 
-        let canvas = Canvas::new(Circle { radius: 50.0 })
+        let canvas = Canvas::new(SineWave { amplitude: 50.0, frequency: 0.1 })
             .width(iced::Length::Fill);
 
         Column::new()
